@@ -1,23 +1,48 @@
-# ✨ Welcome to Your Spark Template!
-You've just launched your brand-new Spark Template Codespace — everything’s fired up and ready for you to explore, build, and create with Spark!
+# Terminal Quest 🖥️
 
-This template is your blank canvas. It comes with a minimal setup to help you get started quickly with Spark development.
+A browser-based puzzle game that emulates a Linux terminal environment where players solve system administration challenges through commands, configuration, and problem-solving.
 
-🚀 What's Inside?
-- A clean, minimal Spark environment
-- Pre-configured for local development
-- Ready to scale with your ideas
-  
-🧠 What Can You Do?
+[![Play Now](https://img.shields.io/badge/Play%20Now-Live%20Demo-brightgreen)](https://werddomain.github.io/terminal-quest/)
 
-Right now, this is just a starting point — the perfect place to begin building and testing your Spark applications.
+## 🎮 Play the Game
 
-🧹 Just Exploring?
-No problem! If you were just checking things out and don’t need to keep this code:
+**[▶️ Play Terminal Quest](https://werddomain.github.io/terminal-quest/)**
 
-- Simply delete your Spark.
-- Everything will be cleaned up — no traces left behind.
+## 📸 Screenshot
 
-📄 License For Spark Template Resources 
+![Terminal Quest Screenshot](https://github.com/user-attachments/assets/24ab3fb5-e539-4ec2-abd8-a6564ba79b74)
 
-The Spark Template files and resources from GitHub are licensed under the terms of the MIT license, Copyright GitHub, Inc.
+## ✨ Features
+
+- **Realistic Terminal Emulator** - Experience an authentic Linux terminal with proper command responses and file system navigation
+- **Progressive Puzzle Levels** - Solve challenges that teach Linux concepts like file navigation, permissions, and package management
+- **Scoring System** - Earn points based on time, efficiency, and minimal hint usage
+- **Hint System** - Get progressive hints when stuck (at a point cost)
+- **Progress Persistence** - Your progress is saved automatically across browser sessions
+
+## 🎯 How to Play
+
+1. Type `help` to see available commands
+2. Each level has a specific objective to complete
+3. Use commands like `ls`, `cd`, `cat`, `nano`, and more to solve puzzles
+4. Type `hint` if you're stuck (costs -25 points)
+5. Faster completion = higher score!
+
+## 🏆 Scoring
+
+- Base score for completing each level
+- Time bonus for quick completion
+- -25 points per hint used
+- -5 points per command attempt
+
+## 🛠️ Built With
+
+- [React](https://react.dev/) - UI Framework
+- [TypeScript](https://www.typescriptlang.org/) - Type-safe JavaScript
+- [Vite](https://vitejs.dev/) - Build tool
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [Radix UI](https://www.radix-ui.com/) - UI Components
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
