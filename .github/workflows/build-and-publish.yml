@@ -1,0 +1,46 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          if [ -f package.json ]; then
+            npm install
+          else
+            echo "No package.json found. Skipping installation."
+          fi
+
+      - name: Build project
+        run: |
+          if [ -f package.json ]; then
+            npm run build --if-present
+          else
+            echo "No package.json detected. Skipping build."
+          fi
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
