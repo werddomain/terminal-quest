@@ -36,7 +36,7 @@ jobs:
 
       - name: Build project
         run: |
-          if [ -f package. json ]; then
+          if [ -f package.json ]; then
             npm run build --if-present
           else
             echo "No package.json detected. Skipping build."
