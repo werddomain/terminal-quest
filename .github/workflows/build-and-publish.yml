@@ -6,13 +6,17 @@ on:
       - main
   workflow_dispatch:
 
-defaults:
+defaults: 
   run:
     working-directory: ./
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -20,9 +24,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version:  '20'
 
-      - name: Install dependencies
+      - name:  Install dependencies
         run: |
           if [ -f package.json ]; then
             npm install
@@ -32,7 +36,7 @@ jobs:
 
       - name: Build project
         run: |
-          if [ -f package.json ]; then
+          if [ -f package. json ]; then
             npm run build --if-present
           else
             echo "No package.json detected. Skipping build."
@@ -40,7 +44,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
-        with:
+        with: 
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
           publish_dir: ./dist
