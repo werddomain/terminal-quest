@@ -69,7 +69,8 @@ export function executeCommand(
         return handleExecuteScript(trimmed.slice(2), state);
       }
       // Check if it's a package version check command (e.g., nginx -v, apache2 -v)
-      if (args.includes('-v') || args.includes('--version')) {
+      // Only for installed packages to avoid false positives
+      if ((args.includes('-v') || args.includes('--version')) && state.installedPackages.includes(command)) {
         return handlePackageVersion(command, state);
       }
       return {

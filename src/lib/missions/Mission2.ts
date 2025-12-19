@@ -41,14 +41,16 @@ export class Mission2 extends BaseMission {
     
     // Check that the user has verified the installation using one of these commands:
     // - apt list --installed
-    // - nginx -v (or any command with nginx and -v)
+    // - nginx -v (or nginx --version)
     const hasVerified = state.commandHistory.some(cmd => {
       const trimmed = cmd.trim().toLowerCase();
-      return (
-        trimmed.includes('apt list --installed') ||
-        trimmed.includes('apt list') && trimmed.includes('installed') ||
-        (trimmed.includes('nginx') && trimmed.includes('-v'))
-      );
+      // Check for apt list --installed (or variations)
+      const aptListInstalled = trimmed === 'apt list --installed' || 
+                                trimmed === 'apt-get list --installed';
+      // Check for nginx version command (must start with nginx and have version flag)
+      const nginxVersion = trimmed.startsWith('nginx') && 
+                           (trimmed.includes(' -v') || trimmed.includes(' --version'));
+      return aptListInstalled || nginxVersion;
     });
 
     return nginxInstalled && hasVerified;
