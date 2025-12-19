@@ -108,6 +108,7 @@ export function LevelComplete({
             <Button
               onClick={onNextLevel}
               className="w-full font-mono bg-terminal-green text-primary-foreground hover:bg-terminal-green/90"
+              autoFocus={false}
             >
               <ArrowRight className="w-4 h-4 mr-2" />
               Next Level
