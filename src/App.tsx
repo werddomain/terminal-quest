@@ -3,13 +3,19 @@ import { useKV } from '@github/spark/hooks';
 import { Terminal } from '@/components/terminal/Terminal';
 import { Editor } from '@/components/terminal/Editor';
 import { GameHUD } from '@/components/game/GameHUD';
+import { TicketHUD } from '@/components/game/TicketHUD';
+import { XPBar } from '@/components/game/XPBar';
 import { LevelSelect } from '@/components/game/LevelSelect';
 import { LevelComplete } from '@/components/game/LevelComplete';
+import { TicketSelect } from '@/components/game/TicketSelect';
+import { TicketComplete } from '@/components/game/TicketComplete';
+import { StageTransition } from '@/components/game/StageTransition';
+import { CertificateInstall } from '@/components/game/CertificateInstall';
 import { Button } from '@/components/ui/button';
-import { List, House, Info } from '@phosphor-icons/react';
+import { List, House, Info, Briefcase } from '@phosphor-icons/react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { levels } from '@/lib/levels';
-import type { TerminalState, GameProgress, LevelState, LevelScore } from '@/lib/types';
+import type { TerminalState, GameProgress, LevelState, LevelScore, ActiveTicket, Ticket, TechnicianLevel } from '@/lib/types';
 import { toast, Toaster } from 'sonner';
 
 const DEFAULT_PROGRESS: GameProgress = {
@@ -27,13 +33,22 @@ function App() {
   const [progressData, setProgress] = useKV<GameProgress>('terminal-quest-progress', DEFAULT_PROGRESS);
   const progress = progressData ?? DEFAULT_PROGRESS;
   const [showLevelSelect, setShowLevelSelect] = useState(false);
+  const [showTicketSelect, setShowTicketSelect] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [showComplete, setShowComplete] = useState(false);
+  const [showTicketComplete, setShowTicketComplete] = useState(false);
+  const [showStageTransition, setShowStageTransition] = useState(false);
+  const [showCertificateInstall, setShowCertificateInstall] = useState(false);
   const [currentLevelId, setCurrentLevelId] = useState(1);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [activeTicket, setActiveTicket] = useState<ActiveTicket | null>(null);
+  const [ticketXPGained, setTicketXPGained] = useState(0);
+  const [ticketSuccess, setTicketSuccess] = useState(false);
 
   const currentLevel = levels.find(l => l.id === currentLevelId) || levels[0];
+  const isHobbyistStage = progress.stage === 'hobbyist';
+  const isTechnicianStage = progress.stage === 'technician';
 
   const [terminalState, setTerminalState] = useState<TerminalState>(() => ({
     currentDirectory: currentLevel.initialDirectory,
@@ -133,6 +148,117 @@ function App() {
     }
   }, [currentLevel, levelState, progress, currentLevelId, setProgress]);
 
+  // Check for stage transition after completing level 15
+  useEffect(() => {
+    if (showComplete && currentLevelId === 15 && isHobbyistStage && !showStageTransition) {
+      // Delay to show completion dialog first
+      const timer = setTimeout(() => {
+        setShowStageTransition(true);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [showComplete, currentLevelId, isHobbyistStage, showStageTransition]);
+
+  // Check for ticket completion
+  useEffect(() => {
+    if (!isPlaying || !activeTicket || levelState.completed) return;
+
+    const won = activeTicket.ticket.checkWinCondition(terminalState);
+    if (won) {
+      handleTicketComplete(true);
+    }
+  }, [terminalState, isPlaying, activeTicket, levelState.completed]);
+
+  const handleStageTransition = useCallback(() => {
+    setProgress((prev): GameProgress => {
+      const current = prev ?? DEFAULT_PROGRESS;
+      return {
+        ...current,
+        stage: 'technician',
+        technicianLevel: {
+          level: 3,
+          xp: 0
+        },
+        sshCertificates: ['level-3']
+      };
+    });
+    setShowStageTransition(false);
+    setShowComplete(false);
+    toast.success('Welcome to the Technician Stage!');
+  }, [setProgress]);
+
+  const handleTicketComplete = useCallback((success: boolean) => {
+    if (!activeTicket) return;
+
+    const finalTime = Math.floor((Date.now() - levelState.startTime) / 1000);
+    const ticket = activeTicket.ticket;
+    
+    let xpChange = 0;
+    if (success) {
+      xpChange = ticket.xpReward;
+    } else {
+      // Apply penalty only if ticket can fail
+      xpChange = ticket.canFail ? -ticket.xpPenalty : 0;
+    }
+
+    const currentXP = progress.technicianLevel?.xp || 0;
+    const newXP = Math.max(0, currentXP + xpChange);
+    const currentTechLevel = progress.technicianLevel?.level || 3;
+    
+    // Check for level up
+    let newLevel = currentTechLevel;
+    let leveledUp = false;
+    
+    if (currentTechLevel === 3 && newXP >= 1000) {
+      newLevel = 2;
+      leveledUp = true;
+    } else if (currentTechLevel === 2 && newXP >= 3000) {
+      newLevel = 1;
+      leveledUp = true;
+    }
+
+    setTicketXPGained(xpChange);
+    setTicketSuccess(success);
+    setLevelState(prev => ({ ...prev, completed: true }));
+
+    setProgress((prev): GameProgress => {
+      const current = prev ?? DEFAULT_PROGRESS;
+      return {
+        ...current,
+        technicianLevel: {
+          level: newLevel as 1 | 2 | 3,
+          xp: newXP
+        },
+        completedTickets: success 
+          ? [...(current.completedTickets || []), ticket.id]
+          : current.completedTickets,
+        sshCertificates: leveledUp && newLevel !== currentTechLevel
+          ? [...(current.sshCertificates || []), `level-${newLevel}`]
+          : current.sshCertificates
+      };
+    });
+
+    setShowTicketComplete(true);
+    
+    // Show certificate install dialog if leveled up
+    if (leveledUp) {
+      setTimeout(() => {
+        setShowCertificateInstall(true);
+      }, 2000);
+    }
+
+    if (success) {
+      toast.success('Ticket Completed!', { description: `+${xpChange} XP` });
+    } else {
+      toast.error('Ticket Failed', { description: xpChange < 0 ? `${xpChange} XP` : 'No penalty' });
+    }
+  }, [activeTicket, levelState, progress, setProgress]);
+
+  const handleAbandonTicket = useCallback(() => {
+    if (!activeTicket) return;
+    handleTicketComplete(false);
+  }, [activeTicket, handleTicketComplete]);
+
   const startLevel = useCallback((levelId: number) => {
     const level = levels.find(l => l.id === levelId) || levels[0];
     
@@ -170,6 +296,41 @@ function App() {
     });
   }, [setProgress]);
 
+  const startTicket = useCallback((ticket: Ticket) => {
+    setActiveTicket({
+      ticket,
+      startTime: Date.now(),
+      hintsUsed: 0,
+      attempts: 0
+    });
+    setTerminalState({
+      currentDirectory: ticket.initialDirectory,
+      fileSystem: JSON.parse(JSON.stringify(ticket.fileSystem)),
+      commandHistory: [],
+      outputHistory: [],
+      installedPackages: [],
+      env: {},
+      editingFile: null,
+      editingContent: '',
+      sshConnected: false,
+      sshHost: undefined
+    });
+    setLevelState({
+      startTime: Date.now(),
+      hintsUsed: 0,
+      hintsRevealed: [],
+      attempts: 0,
+      completed: false
+    });
+    setElapsedTime(0);
+    setIsPlaying(true);
+    setShowTicketSelect(false);
+    setShowTicketComplete(false);
+    setShowIntro(false);
+    
+    toast.info('Ticket started', { description: 'Connect to the server and complete the task' });
+  }, []);
+
   const handleTerminalStateChange = useCallback((newState: Partial<TerminalState>) => {
     setTerminalState(prev => ({ ...prev, ...newState }));
     
@@ -179,18 +340,25 @@ function App() {
   }, [terminalState.commandHistory.length]);
 
   const handleHintRequest = useCallback(() => {
-    if (levelState.hintsUsed >= currentLevel.maxHints) {
+    const hints = activeTicket ? activeTicket.ticket.hints : currentLevel.hints;
+    const maxHints = activeTicket ? activeTicket.ticket.hints.length : currentLevel.maxHints;
+    
+    if (levelState.hintsUsed >= maxHints) {
       toast.error('No hints remaining!');
       return;
     }
 
-    const nextHint = currentLevel.hints[levelState.hintsUsed];
+    const nextHint = hints[levelState.hintsUsed];
     if (nextHint) {
       setLevelState(prev => ({
         ...prev,
         hintsUsed: prev.hintsUsed + 1,
         hintsRevealed: [...prev.hintsRevealed, nextHint]
       }));
+      
+      if (activeTicket) {
+        setActiveTicket(prev => prev ? { ...prev, hintsUsed: prev.hintsUsed + 1 } : null);
+      }
       
       setTerminalState(prev => ({
         ...prev,
@@ -200,9 +368,9 @@ function App() {
         }]
       }));
       
-      toast.info('Hint revealed', { description: '-25 points' });
+      toast.info('Hint revealed');
     }
-  }, [levelState.hintsUsed, currentLevel]);
+  }, [levelState.hintsUsed, currentLevel, activeTicket]);
 
   const handleNextLevel = useCallback(() => {
     // Guard: only proceed if the completion dialog is actually shown
@@ -244,35 +412,65 @@ function App() {
           >
             <Info className="w-4 h-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => startLevel(1)}
-            className="font-mono text-xs"
-          >
-            <House className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowLevelSelect(true)}
-            className="font-mono text-xs"
-          >
-            <List className="w-4 h-4 mr-1" />
-            Levels
-          </Button>
+          {isHobbyistStage ? (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => startLevel(1)}
+                className="font-mono text-xs"
+              >
+                <House className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowLevelSelect(true)}
+                className="font-mono text-xs"
+              >
+                <List className="w-4 h-4 mr-1" />
+                Levels
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowTicketSelect(true)}
+              className="font-mono text-xs border-terminal-green/50 hover:border-terminal-green"
+            >
+              <Briefcase className="w-4 h-4 mr-1" />
+              Tickets
+            </Button>
+          )}
         </div>
       </header>
 
       <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 overflow-hidden">
         <div className="lg:w-80 shrink-0">
-          <GameHUD
-            level={currentLevel}
-            levelState={levelState}
-            elapsedTime={elapsedTime}
-            onHintRequest={handleHintRequest}
-            totalScore={progress.totalScore}
-          />
+          {isTechnicianStage && progress.technicianLevel && (
+            <div className="mb-3">
+              <XPBar technicianLevel={progress.technicianLevel} />
+            </div>
+          )}
+          
+          {activeTicket && isTechnicianStage ? (
+            <TicketHUD
+              activeTicket={activeTicket}
+              elapsedTime={elapsedTime}
+              onHintRequest={handleHintRequest}
+              onAbandonTicket={handleAbandonTicket}
+              currentXP={progress.technicianLevel?.xp || 0}
+            />
+          ) : (
+            <GameHUD
+              level={currentLevel}
+              levelState={levelState}
+              elapsedTime={elapsedTime}
+              onHintRequest={handleHintRequest}
+              totalScore={progress.totalScore}
+            />
+          )}
         </div>
         
         <div className="flex-1 min-h-[400px] lg:min-h-0 relative">
@@ -315,6 +513,49 @@ function App() {
           }}
         />
       )}
+
+      {isTechnicianStage && progress.technicianLevel && (
+        <>
+          <TicketSelect
+            open={showTicketSelect}
+            onOpenChange={setShowTicketSelect}
+            technicianLevel={progress.technicianLevel}
+            onSelectTicket={startTicket}
+            completedTickets={progress.completedTickets || []}
+          />
+
+          {activeTicket && (
+            <TicketComplete
+              open={showTicketComplete}
+              onClose={() => {
+                setShowTicketComplete(false);
+                setActiveTicket(null);
+                setIsPlaying(false);
+              }}
+              activeTicket={activeTicket}
+              success={ticketSuccess}
+              elapsedTime={elapsedTime}
+              xpGained={ticketXPGained}
+              newXP={progress.technicianLevel.xp}
+              leveledUp={showCertificateInstall}
+              newLevel={progress.technicianLevel.level}
+            />
+          )}
+
+          {showCertificateInstall && (
+            <CertificateInstall
+              open={showCertificateInstall}
+              onClose={() => setShowCertificateInstall(false)}
+              technicianLevel={progress.technicianLevel.level}
+            />
+          )}
+        </>
+      )}
+
+      <StageTransition
+        open={showStageTransition}
+        onTransition={handleStageTransition}
+      />
 
       <Dialog open={showIntro} onOpenChange={setShowIntro}>
         <DialogContent className="max-w-lg bg-card border-border">
