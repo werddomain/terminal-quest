@@ -110,6 +110,8 @@ function getNodeAtPath(fs: FileSystemNode, path: string): FileSystemNode | null 
   return getFileAtPath(fs, path);
 }
 
+export { resolvePath, normalizePath };
+
 function getParentPath(path: string): string {
   const parts = path.split('/').filter(Boolean);
   parts.pop();

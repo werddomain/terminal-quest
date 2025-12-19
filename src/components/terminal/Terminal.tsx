@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import type { OutputLine, TerminalState, Level, FileSystemNode } from '@/lib/types';
-import { executeCommand } from '@/lib/terminal';
+import { executeCommand, resolvePath, normalizePath } from '@/lib/terminal';
+import { getFileAtPath } from '@/lib/levels';
 
 interface TerminalProps {
   state: TerminalState;
@@ -9,63 +10,6 @@ interface TerminalProps {
   level: Level;
   onHintRequest: () => void;
   disabled?: boolean;
-}
-
-// Helper function to get node at path
-function getNodeAtPath(fs: FileSystemNode, path: string): FileSystemNode | null {
-  if (path === '/' || path === '') {
-    return fs;
-  }
-  
-  const parts = path.split('/').filter(Boolean);
-  let current = fs;
-  
-  for (const part of parts) {
-    if (part === '.') continue;
-    if (part === '..') {
-      // For simplicity, we don't handle .. in autocomplete
-      return null;
-    }
-    if (!current.children || !current.children[part]) {
-      return null;
-    }
-    current = current.children[part];
-  }
-  
-  return current;
-}
-
-// Helper function to resolve path
-function resolvePath(path: string, currentDir: string): string {
-  if (path.startsWith('/')) {
-    return path;
-  }
-  if (path === '~') {
-    return '/home/user';
-  }
-  if (path.startsWith('~/')) {
-    return '/home/user/' + path.slice(2);
-  }
-  if (currentDir === '/') {
-    return '/' + path;
-  }
-  return currentDir + '/' + path;
-}
-
-// Helper function to normalize path
-function normalizePath(path: string): string {
-  const parts = path.split('/').filter(Boolean);
-  const result: string[] = [];
-  
-  for (const part of parts) {
-    if (part === '..') {
-      result.pop();
-    } else if (part !== '.') {
-      result.push(part);
-    }
-  }
-  
-  return '/' + result.join('/');
 }
 
 // Get autocomplete suggestions for the current input
@@ -135,7 +79,7 @@ function getPathSuggestions(partial: string, state: TerminalState): string[] {
     }
   }
   
-  const node = getNodeAtPath(state.fileSystem, basePath);
+  const node = getFileAtPath(state.fileSystem, basePath);
   if (!node || node.type !== 'directory' || !node.children) {
     return [];
   }
@@ -150,7 +94,10 @@ function getPathSuggestions(partial: string, state: TerminalState): string[] {
       // Reconstruct the full suggestion
       let suggestion: string;
       if (isRelativeScript) {
-        suggestion = './' + searchPrefix.slice(0, -searchPrefix.length) + name;
+        // For ./ prefix, we need to keep any directory path from searchPrefix
+        const lastSlashInSearch = searchPrefix.lastIndexOf('/');
+        const dirPart = lastSlashInSearch >= 0 ? searchPrefix.slice(0, lastSlashInSearch + 1) : '';
+        suggestion = './' + dirPart + name;
       } else if (isAbsolute) {
         const lastSlash = partial.lastIndexOf('/');
         suggestion = partial.slice(0, lastSlash + 1) + name;
