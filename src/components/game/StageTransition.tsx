@@ -2,6 +2,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Trophy, Briefcase, Target, CheckCircle } from '@phosphor-icons/react';
+import { level3Tickets } from '@/lib/tickets';
 
 interface StageTransitionProps {
   open: boolean;
@@ -83,7 +84,7 @@ export function StageTransition({ open, onTransition }: StageTransitionProps) {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Available Tickets:</span>
-                <span className="text-terminal-green font-bold">15 Junior Level Tasks</span>
+                <span className="text-terminal-green font-bold">{level3Tickets.length} Junior Level Tasks</span>
               </div>
             </div>
           </Card>

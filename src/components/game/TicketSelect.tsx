@@ -75,7 +75,7 @@ export function TicketSelect({
             Available Support Tickets
           </DialogTitle>
           <DialogDescription className="font-mono text-muted-foreground">
-            Select a ticket to start working. Level {technicianLevel.level} Technician ({getDifficultyLabel(technicianLevel.level)})
+            Select a ticket to start working as a Level {technicianLevel.level} Technician ({getDifficultyLabel(technicianLevel.level)})
           </DialogDescription>
         </DialogHeader>
 
