@@ -64,6 +64,25 @@ export function executeCommand(
       return handleMan(args);
     case 'history':
       return handleHistory(state);
+    case 'find':
+      return handleFind(args, state);
+    case 'du':
+      return handleDu(args, state);
+    case 'tar':
+      return handleTar(args, state);
+    case 'ifconfig':
+      return handleIfconfig(args);
+    case 'ping':
+      return handlePing(args);
+    case 'ps':
+      return handlePs(args);
+    case 'free':
+      return handleFree(args);
+    case 'df':
+      return handleDf(args);
+    case 'top':
+    case 'htop':
+      return handleTop();
     default:
       if (trimmed.startsWith('./')) {
         return handleExecuteScript(trimmed.slice(2), state);
@@ -710,8 +729,17 @@ function handleHelp(args: string[] = []): CommandResult {
     '  rm [-r] <file>         - Remove file or directory',
     '  chmod <mode> <file>    - Change file permissions',
     '  grep <pattern> <file>  - Search for pattern in file',
+    '  find <path> -name <pattern> - Find files by name',
     '  nano/vim <file>        - Edit file',
     '  apt <command>          - Package manager (install, remove, list, search)',
+    '  tar -cf <archive> <files> - Create tar archive',
+    '  du [-h] [path]         - Display disk usage',
+    '  df [-h]                - Display disk space',
+    '  ps [aux]               - Display running processes',
+    '  top                    - Display system resource usage',
+    '  free [-h]              - Display memory usage',
+    '  ifconfig               - Display network interfaces',
+    '  ping <host>            - Test network connectivity',
     '  ./<script>             - Execute script',
     '  clear                  - Clear terminal',
     '  whoami                 - Display current user',
@@ -1154,6 +1182,295 @@ function handlePackageVersion(packageName: string, state: TerminalState): Comman
   
   return {
     output: [{ text: version, type: 'output' }],
+    newState: {}
+  };
+}
+
+function handleFind(args: string[], state: TerminalState): CommandResult {
+  // Simple implementation: find <path> -name <pattern>
+  const nameIndex = args.indexOf('-name');
+  const path = args[0] || state.currentDirectory;
+  
+  if (nameIndex === -1 || !args[nameIndex + 1]) {
+    return {
+      output: [{ text: 'find: usage: find <path> -name <pattern>', type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  const pattern = args[nameIndex + 1].replace(/\*/g, '');
+  const results: string[] = [];
+  
+  function searchNode(node: FileSystemNode, currentPath: string) {
+    if (node.name.includes(pattern)) {
+      results.push(currentPath + '/' + node.name);
+    }
+    
+    if (node.type === 'directory' && node.children) {
+      for (const childName in node.children) {
+        const child = node.children[childName];
+        searchNode(child, currentPath + '/' + node.name);
+      }
+    }
+  }
+  
+  const startNode = getNodeAtPath(state.fileSystem, resolvePath(path, state.currentDirectory));
+  if (!startNode) {
+    return {
+      output: [{ text: `find: '${path}': No such file or directory`, type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  if (startNode.type === 'directory' && startNode.children) {
+    for (const childName in startNode.children) {
+      const child = startNode.children[childName];
+      searchNode(child, path === '/' ? '' : path);
+    }
+  }
+  
+  return {
+    output: results.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handleDu(args: string[], state: TerminalState): CommandResult {
+  const humanReadable = args.includes('-h');
+  const summary = args.includes('-s');
+  const path = args.find(a => !a.startsWith('-')) || state.currentDirectory;
+  const resolvedPath = resolvePath(path, state.currentDirectory);
+  
+  const node = getNodeAtPath(state.fileSystem, resolvedPath);
+  
+  if (!node) {
+    return {
+      output: [{ text: `du: cannot access '${path}': No such file or directory`, type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  function getSize(n: FileSystemNode): number {
+    if (n.type === 'file') {
+      return n.content?.length || 0;
+    }
+    let total = 4096; // Base directory size
+    if (n.children) {
+      for (const child of Object.values(n.children)) {
+        total += getSize(child);
+      }
+    }
+    return total;
+  }
+  
+  const outputs: OutputLine[] = [];
+  
+  if (node.type === 'directory' && node.children && !summary) {
+    for (const [name, child] of Object.entries(node.children)) {
+      const size = getSize(child);
+      const displaySize = humanReadable ? formatSize(size) : Math.ceil(size / 1024).toString();
+      outputs.push({ text: `${displaySize}\t${path}/${name}`, type: 'output' });
+    }
+  }
+  
+  const totalSize = getSize(node);
+  const displaySize = humanReadable ? formatSize(totalSize) : Math.ceil(totalSize / 1024).toString();
+  outputs.push({ text: `${displaySize}\t${path}`, type: 'output' });
+  
+  return { output: outputs, newState: {} };
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return bytes + 'B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'K';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + 'M';
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + 'G';
+}
+
+function handleTar(args: string[], state: TerminalState): CommandResult {
+  // Simple tar implementation: tar -cf archive.tar directory
+  const createMode = args.includes('-cf') || (args.includes('-c') && args.includes('-f'));
+  
+  if (!createMode) {
+    return {
+      output: [{ text: 'tar: usage: tar -cf <archive> <files>', type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  const cfIndex = args.findIndex(a => a === '-cf');
+  const archiveName = cfIndex !== -1 ? args[cfIndex + 1] : args.find((a, i) => i > 0 && !a.startsWith('-'));
+  const sourcePath = cfIndex !== -1 ? args[cfIndex + 2] : args.find((a, i) => i > 1 && !a.startsWith('-'));
+  
+  if (!archiveName || !sourcePath) {
+    return {
+      output: [{ text: 'tar: missing operand', type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  const resolvedSource = resolvePath(sourcePath, state.currentDirectory);
+  const sourceNode = getNodeAtPath(state.fileSystem, resolvedSource);
+  
+  if (!sourceNode) {
+    return {
+      output: [{ text: `tar: ${sourcePath}: Cannot stat: No such file or directory`, type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  // Create the archive file
+  const resolvedArchive = resolvePath(archiveName, state.currentDirectory);
+  const parentPath = getParentPath(resolvedArchive);
+  const fileName = resolvedArchive.split('/').pop()!;
+  
+  const newFs = JSON.parse(JSON.stringify(state.fileSystem));
+  const parentNode = getNodeAtPath(newFs, parentPath);
+  
+  if (!parentNode || parentNode.type !== 'directory') {
+    return {
+      output: [{ text: `tar: ${archiveName}: Cannot create archive`, type: 'error' }],
+      newState: {}
+    };
+  }
+  
+  parentNode.children![fileName] = {
+    type: 'file',
+    name: fileName,
+    content: `[TAR ARCHIVE of ${sourcePath}]`
+  };
+  
+  return {
+    output: [{ text: `Created archive ${archiveName}`, type: 'success' }],
+    newState: { fileSystem: newFs }
+  };
+}
+
+function handleIfconfig(args: string[]): CommandResult {
+  const output = [
+    'eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500',
+    '        inet 192.168.1.100  netmask 255.255.255.0  broadcast 192.168.1.255',
+    '        inet6 fe80::a00:27ff:fe4e:66a1  prefixlen 64  scopeid 0x20<link>',
+    '        ether 08:00:27:4e:66:a1  txqueuelen 1000  (Ethernet)',
+    '',
+    'lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536',
+    '        inet 127.0.0.1  netmask 255.0.0.0',
+    '        inet6 ::1  prefixlen 128  scopeid 0x10<host>',
+    '        loop  txqueuelen 1000  (Local Loopback)'
+  ];
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handlePing(args: string[]): CommandResult {
+  const target = args[0] || 'localhost';
+  const output = [
+    `PING ${target} (127.0.0.1) 56(84) bytes of data.`,
+    `64 bytes from ${target} (127.0.0.1): icmp_seq=1 ttl=64 time=0.045 ms`,
+    `64 bytes from ${target} (127.0.0.1): icmp_seq=2 ttl=64 time=0.052 ms`,
+    `64 bytes from ${target} (127.0.0.1): icmp_seq=3 ttl=64 time=0.048 ms`,
+    ``,
+    `--- ${target} ping statistics ---`,
+    `3 packets transmitted, 3 received, 0% packet loss, time 2048ms`,
+    `rtt min/avg/max/mdev = 0.045/0.048/0.052/0.006 ms`
+  ];
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handlePs(args: string[]): CommandResult {
+  const showAll = args.includes('aux') || args.includes('-aux');
+  
+  const processes = [
+    'PID TTY          TIME CMD',
+    '  1 ?        00:00:01 init',
+    ' 42 ?        00:00:00 systemd',
+    '156 ?        00:00:00 sshd',
+    '234 ?        00:00:02 cron',
+    '567 pts/0    00:00:00 bash',
+    '890 pts/0    00:00:00 ps'
+  ];
+  
+  const processesAux = [
+    'USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND',
+    'root         1  0.0  0.1 168536 11840 ?        Ss   Jan01   0:01 /sbin/init',
+    'root        42  0.0  0.2  45232  3456 ?        Ss   Jan01   0:00 /lib/systemd/systemd',
+    'root       156  0.0  0.1  72344  5760 ?        Ss   Jan01   0:00 /usr/sbin/sshd',
+    'root       234  0.0  0.0  26920  2304 ?        Ss   Jan01   0:02 /usr/sbin/cron',
+    'user       567  0.0  0.1  21520  4096 pts/0    Ss   10:30   0:00 -bash',
+    'user       890  0.0  0.0  38392  3200 pts/0    R+   10:45   0:00 ps aux'
+  ];
+  
+  const output = showAll ? processesAux : processes;
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handleFree(args: string[]): CommandResult {
+  const humanReadable = args.includes('-h');
+  
+  const output = humanReadable ? [
+    '              total        used        free      shared  buff/cache   available',
+    'Mem:          7.7Gi       3.2Gi       1.5Gi       256Mi       3.0Gi       4.1Gi',
+    'Swap:         2.0Gi       512Mi       1.5Gi'
+  ] : [
+    '              total        used        free      shared  buff/cache   available',
+    'Mem:        8165432     3354876     1572864      262144     3145728     4294967',
+    'Swap:       2097152      524288     1572864'
+  ];
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handleDf(args: string[]): CommandResult {
+  const humanReadable = args.includes('-h');
+  
+  const output = humanReadable ? [
+    'Filesystem      Size  Used Avail Use% Mounted on',
+    '/dev/sda1        50G   28G   20G  59% /',
+    'tmpfs           3.9G  1.2M  3.9G   1% /dev/shm',
+    '/dev/sda2       100G   45G   50G  48% /home'
+  ] : [
+    'Filesystem     1K-blocks     Used Available Use% Mounted on',
+    '/dev/sda1       52428800 29360128  20971520  59% /',
+    'tmpfs            4096000     1228   4094772   1% /dev/shm',
+    '/dev/sda2      104857600 47185920  52428800  48% /home'
+  ];
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handleTop(): CommandResult {
+  const output = [
+    'top - 10:45:23 up 15 days,  3:14,  1 user,  load average: 0.52, 0.48, 0.45',
+    'Tasks: 198 total,   1 running, 197 sleeping,   0 stopped,   0 zombie',
+    '%Cpu(s):  8.3 us,  2.1 sy,  0.0 ni, 89.2 id,  0.3 wa,  0.0 hi,  0.1 si,  0.0 st',
+    'MiB Mem :   7974.5 total,   1535.7 free,   3273.2 used,   3165.6 buff/cache',
+    'MiB Swap:   2048.0 total,   1536.0 free,    512.0 used.   4194.3 avail Mem',
+    '',
+    '  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND',
+    '    1 root      20   0  168536  11840   8960 S   0.0   0.1   0:01.34 init',
+    '  567 user      20   0   21520   4096   3456 S   0.0   0.1   0:00.12 bash',
+    '  890 user      20   0   38392   3200   2688 R   0.3   0.0   0:00.01 top'
+  ];
+  
+  return {
+    output: output.map(text => ({ text, type: 'output' as const })),
     newState: {}
   };
 }
