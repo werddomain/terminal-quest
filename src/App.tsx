@@ -16,7 +16,11 @@ const DEFAULT_PROGRESS: GameProgress = {
   currentLevel: 1,
   completedLevels: [],
   scores: {},
-  totalScore: 0
+  totalScore: 0,
+  stage: 'hobbyist',
+  technicianLevel: undefined,
+  completedTickets: [],
+  sshCertificates: []
 };
 
 function App() {
