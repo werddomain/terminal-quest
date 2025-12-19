@@ -57,6 +57,8 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     if (disabled) return;
 
     if (e.key === 'Enter') {
+      e.preventDefault();
+      e.stopPropagation();
       handleCommand(input);
       setInput('');
       setHistoryIndex(-1);

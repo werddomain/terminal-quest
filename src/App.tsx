@@ -75,7 +75,7 @@ function App() {
     if (won) {
       handleLevelComplete();
     }
-  }, [terminalState, isPlaying, levelState.completed]);
+  }, [terminalState, isPlaying, levelState.completed, currentLevel]);
 
   const handleLevelComplete = useCallback(() => {
     const finalTime = Math.floor((Date.now() - levelState.startTime) / 1000);
@@ -154,6 +154,7 @@ function App() {
     setIsPlaying(true);
     setShowLevelSelect(false);
     setShowComplete(false);
+    setCompletedScore(null);
     setShowIntro(false);
     
     setProgress((prev): GameProgress => {
@@ -200,11 +201,16 @@ function App() {
   }, [levelState.hintsUsed, currentLevel]);
 
   const handleNextLevel = useCallback(() => {
+    // Guard: only proceed if the completion dialog is actually shown
+    if (!showComplete || !completedScore) {
+      return;
+    }
+    
     const nextLevelId = currentLevelId + 1;
     if (nextLevelId <= levels.length) {
       startLevel(nextLevelId);
     }
-  }, [currentLevelId, startLevel]);
+  }, [currentLevelId, startLevel, showComplete, completedScore]);
 
   const handleEditorClose = useCallback(() => {
     setTerminalState(prev => ({
