@@ -53,8 +53,24 @@ export function createBaseFileSystem(): FileSystemNode {
             type: 'directory',
             name: 'bin',
             children: {}
+          },
+          local: {
+            type: 'directory',
+            name: 'local',
+            children: {
+              bin: {
+                type: 'directory',
+                name: 'bin',
+                children: {}
+              }
+            }
           }
         }
+      },
+      opt: {
+        type: 'directory',
+        name: 'opt',
+        children: {}
       }
     }
   };

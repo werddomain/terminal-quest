@@ -83,6 +83,10 @@ export function executeCommand(
     case 'top':
     case 'htop':
       return handleTop();
+    case 'ssh':
+      return handleSsh(args, state);
+    case 'exit':
+      return handleExit(state);
     default:
       if (trimmed.startsWith('./')) {
         return handleExecuteScript(trimmed.slice(2), state);
@@ -740,6 +744,8 @@ function handleHelp(args: string[] = []): CommandResult {
     '  free [-h]              - Display memory usage',
     '  ifconfig               - Display network interfaces',
     '  ping <host>            - Test network connectivity',
+    '  ssh user@host          - Connect to remote server',
+    '  exit                   - Disconnect from SSH session',
     '  ./<script>             - Execute script',
     '  clear                  - Clear terminal',
     '  whoami                 - Display current user',
@@ -1477,6 +1483,69 @@ function handleTop(): CommandResult {
   
   return {
     output: output.map(text => ({ text, type: 'output' as const })),
+    newState: {}
+  };
+}
+
+function handleSsh(args: string[], state: TerminalState): CommandResult {
+  if (args.length === 0) {
+    return {
+      output: [
+        { text: 'usage: ssh user@hostname', type: 'error' }
+      ],
+      newState: {}
+    };
+  }
+
+  const target = args[0];
+  const match = target.match(/^(\w+)@(.+)$/);
+  
+  if (!match) {
+    return {
+      output: [
+        { text: 'ssh: Invalid format. Use: ssh user@hostname', type: 'error' }
+      ],
+      newState: {}
+    };
+  }
+
+  const [, username, hostname] = match;
+
+  // Simulate SSH connection
+  const output = [
+    { text: `Connecting to ${hostname}...`, type: 'info' },
+    { text: `Warning: Permanently added '${hostname}' (RSA) to the list of known hosts.`, type: 'output' },
+    { text: `Welcome to ${hostname}`, type: 'success' },
+    { text: '', type: 'output' },
+    { text: `You are now connected to ${hostname}`, type: 'success' }
+  ];
+
+  return {
+    output,
+    newState: {
+      sshConnected: true,
+      sshHost: hostname
+    }
+  };
+}
+
+function handleExit(state: TerminalState): CommandResult {
+  if (state.sshConnected) {
+    return {
+      output: [
+        { text: `Connection to ${state.sshHost} closed.`, type: 'info' }
+      ],
+      newState: {
+        sshConnected: false,
+        sshHost: undefined
+      }
+    };
+  }
+
+  return {
+    output: [
+      { text: 'Type Ctrl+C to end the session', type: 'info' }
+    ],
     newState: {}
   };
 }

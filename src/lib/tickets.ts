@@ -893,17 +893,6 @@ export const level2Tickets: Ticket[] = [
     true,
     () => {
       const fs = createBaseFileSystem();
-      fs.children!.usr.children!['local'] = {
-        type: 'directory',
-        name: 'local',
-        children: {
-          bin: {
-            type: 'directory',
-            name: 'bin',
-            children: {}
-          }
-        }
-      };
       return fs;
     },
     (state) => {
