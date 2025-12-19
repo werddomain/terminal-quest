@@ -8,7 +8,7 @@ export class Mission7 extends BaseMission {
   readonly description = 'Important files are scattered across the system. Use find to locate them.';
   readonly objective = 'Find all .conf files in the system and count them. Write the count to /tmp/count.txt';
   readonly hints = [
-    'Use "find / -name *.conf" to search for .conf files',
+    'Use "find / -name \'*.conf\'" to search for .conf files',
     'Count the results and use echo to write to /tmp/count.txt',
     'There are 3 .conf files in the system'
   ];

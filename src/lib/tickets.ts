@@ -704,7 +704,7 @@ export const level2Tickets: Ticket[] = [
     },
     (state) => {
       const cron = getFileAtPath(state.fileSystem, '/etc/crontab');
-      return cron?.content?.includes('0 3 * * *') || false;
+      return (cron?.content?.includes('0 3 * * *') ?? false);
     },
     [
       'Edit /etc/crontab with nano',
@@ -1512,7 +1512,12 @@ export function getAvailableTickets(technicianLevel: 1 | 2 | 3, count: number = 
     pool = [...level1Tickets, ...level2Tickets, ...level3Tickets];
   }
   
-  // Shuffle and return random selection
-  const shuffled = pool.sort(() => Math.random() - 0.5);
+  // Fisher-Yates shuffle algorithm for unbiased randomization
+  const shuffled = [...pool];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  
   return shuffled.slice(0, Math.min(count, shuffled.length));
 }

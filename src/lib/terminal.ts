@@ -1198,23 +1198,29 @@ function handleFind(args: string[], state: TerminalState): CommandResult {
     };
   }
   
-  const pattern = args[nameIndex + 1].replace(/\*/g, '');
+  // Remove quotes and convert glob pattern to simple string matching
+  const pattern = args[nameIndex + 1].replace(/^['"]|['"]$/g, '').replace(/\*/g, '');
   const results: string[] = [];
   
   function searchNode(node: FileSystemNode, currentPath: string) {
+    // Match if pattern is found anywhere in the filename
     if (node.name.includes(pattern)) {
-      results.push(currentPath + '/' + node.name);
+      const fullPath = currentPath === '/' ? '/' + node.name : currentPath + '/' + node.name;
+      results.push(fullPath);
     }
     
     if (node.type === 'directory' && node.children) {
       for (const childName in node.children) {
         const child = node.children[childName];
-        searchNode(child, currentPath + '/' + node.name);
+        const newPath = currentPath === '/' ? '/' + node.name : currentPath + '/' + node.name;
+        searchNode(child, newPath);
       }
     }
   }
   
-  const startNode = getNodeAtPath(state.fileSystem, resolvePath(path, state.currentDirectory));
+  const resolvedPath = resolvePath(path, state.currentDirectory);
+  const startNode = getNodeAtPath(state.fileSystem, resolvedPath);
+  
   if (!startNode) {
     return {
       output: [{ text: `find: '${path}': No such file or directory`, type: 'error' }],
@@ -1225,7 +1231,7 @@ function handleFind(args: string[], state: TerminalState): CommandResult {
   if (startNode.type === 'directory' && startNode.children) {
     for (const childName in startNode.children) {
       const child = startNode.children[childName];
-      searchNode(child, path === '/' ? '' : path);
+      searchNode(child, resolvedPath === '/' ? '' : resolvedPath);
     }
   }
   
