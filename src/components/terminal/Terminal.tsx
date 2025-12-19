@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { OutputLine, TerminalState, Level } from '@/lib/types';
-import { executeCommand } from '@/lib/terminal';
+import type { OutputLine, TerminalState, Level, FileSystemNode } from '@/lib/types';
+import { executeCommand, resolvePath, normalizePath } from '@/lib/terminal';
+import { getFileAtPath } from '@/lib/levels';
 
 interface TerminalProps {
   state: TerminalState;
@@ -11,9 +12,125 @@ interface TerminalProps {
   disabled?: boolean;
 }
 
+// Get autocomplete suggestions for the current input
+function getAutocompleteSuggestions(input: string, state: TerminalState): string[] {
+  const parts = input.split(/\s+/);
+  if (parts.length === 0) return [];
+  
+  const command = parts[0];
+  const lastArg = parts[parts.length - 1] || '';
+  
+  // List of available commands
+  const commands = [
+    'ls', 'cd', 'cat', 'pwd', 'echo', 'mkdir', 'touch', 'rm', 'chmod',
+    'grep', 'apt', 'apt-get', 'nano', 'vim', 'vi', 'clear', 'help',
+    'whoami', 'date', 'uname', 'man', 'history', 'hint'
+  ];
+  
+  // If we're completing the first word (command)
+  if (parts.length === 1 && !input.endsWith(' ')) {
+    return commands
+      .filter(cmd => cmd.startsWith(command))
+      .sort();
+  }
+  
+  // If we're completing a path argument
+  if (parts.length >= 1) {
+    return getPathSuggestions(lastArg, state);
+  }
+  
+  return [];
+}
+
+// Get path suggestions based on filesystem
+function getPathSuggestions(partial: string, state: TerminalState): string[] {
+  const isAbsolute = partial.startsWith('/');
+  const isHome = partial.startsWith('~');
+  const isRelativeScript = partial.startsWith('./');
+  
+  let basePath: string;
+  let searchPrefix: string;
+  
+  if (isRelativeScript) {
+    // Handle ./ prefix
+    basePath = state.currentDirectory;
+    searchPrefix = partial.slice(2);
+  } else if (isAbsolute) {
+    // Absolute path
+    const lastSlash = partial.lastIndexOf('/');
+    basePath = lastSlash === 0 ? '/' : partial.slice(0, lastSlash);
+    searchPrefix = partial.slice(lastSlash + 1);
+  } else if (isHome) {
+    // Home path
+    const withoutTilde = partial.slice(1);
+    const lastSlash = withoutTilde.lastIndexOf('/');
+    basePath = lastSlash === -1 ? '/home/user' : normalizePath('/home/user' + withoutTilde.slice(0, lastSlash + 1));
+    searchPrefix = lastSlash === -1 ? withoutTilde.slice(1) : withoutTilde.slice(lastSlash + 1);
+  } else {
+    // Relative path
+    const lastSlash = partial.lastIndexOf('/');
+    if (lastSlash === -1) {
+      basePath = state.currentDirectory;
+      searchPrefix = partial;
+    } else {
+      const relativePart = partial.slice(0, lastSlash);
+      basePath = normalizePath(resolvePath(relativePart, state.currentDirectory));
+      searchPrefix = partial.slice(lastSlash + 1);
+    }
+  }
+  
+  const node = getFileAtPath(state.fileSystem, basePath);
+  if (!node || node.type !== 'directory' || !node.children) {
+    return [];
+  }
+  
+  const matches = Object.keys(node.children)
+    .filter(name => name.startsWith(searchPrefix))
+    .sort()
+    .map(name => {
+      const childNode = node.children![name];
+      const isDir = childNode.type === 'directory';
+      
+      // Reconstruct the full suggestion
+      let suggestion: string;
+      if (isRelativeScript) {
+        // For ./ prefix, we need to keep any directory path from searchPrefix
+        const lastSlashInSearch = searchPrefix.lastIndexOf('/');
+        const dirPart = lastSlashInSearch >= 0 ? searchPrefix.slice(0, lastSlashInSearch + 1) : '';
+        suggestion = './' + dirPart + name;
+      } else if (isAbsolute) {
+        const lastSlash = partial.lastIndexOf('/');
+        suggestion = partial.slice(0, lastSlash + 1) + name;
+      } else if (isHome) {
+        const withoutTilde = partial.slice(1);
+        const lastSlash = withoutTilde.lastIndexOf('/');
+        if (lastSlash === -1) {
+          suggestion = '~/' + name;
+        } else {
+          suggestion = '~' + withoutTilde.slice(0, lastSlash + 1) + name;
+        }
+      } else {
+        const lastSlash = partial.lastIndexOf('/');
+        if (lastSlash === -1) {
+          suggestion = name;
+        } else {
+          suggestion = partial.slice(0, lastSlash + 1) + name;
+        }
+      }
+      
+      // Add trailing slash for directories
+      return isDir ? suggestion + '/' : suggestion;
+    });
+  
+  return matches;
+}
+
 export function Terminal({ state, onStateChange, level, onHintRequest, disabled }: TerminalProps) {
   const [input, setInput] = useState('');
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [tabSuggestions, setTabSuggestions] = useState<string[]>([]);
+  const [tabIndex, setTabIndex] = useState(0);
+  const [originalInput, setOriginalInput] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -60,6 +177,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       handleCommand(input);
       setInput('');
       setHistoryIndex(-1);
+      setTabSuggestions([]);
+      setTabIndex(0);
+      setOriginalInput('');
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       const newIndex = Math.min(historyIndex + 1, state.commandHistory.length - 1);
@@ -67,6 +187,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       if (newIndex >= 0) {
         setInput(state.commandHistory[state.commandHistory.length - 1 - newIndex] || '');
       }
+      setTabSuggestions([]);
+      setTabIndex(0);
+      setOriginalInput('');
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
       const newIndex = Math.max(historyIndex - 1, -1);
@@ -76,11 +199,58 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       } else {
         setInput('');
       }
+      setTabSuggestions([]);
+      setTabIndex(0);
+      setOriginalInput('');
     } else if (e.key === 'Tab') {
       e.preventDefault();
+      handleTabComplete();
     } else if (e.key === 'l' && e.ctrlKey) {
       e.preventDefault();
       onStateChange({ outputHistory: [] });
+    } else {
+      // Reset tab suggestions on any other key
+      setTabSuggestions([]);
+      setTabIndex(0);
+      setOriginalInput('');
+    }
+  };
+
+  const handleTabComplete = () => {
+    // If we already have suggestions, cycle through them
+    if (tabSuggestions.length > 0) {
+      const nextIndex = (tabIndex + 1) % tabSuggestions.length;
+      setTabIndex(nextIndex);
+      applySuggestion(tabSuggestions[nextIndex], originalInput);
+      return;
+    }
+
+    // Get new suggestions
+    const suggestions = getAutocompleteSuggestions(input, state);
+    if (suggestions.length === 0) {
+      return;
+    }
+
+    setTabSuggestions(suggestions);
+    setTabIndex(0);
+    setOriginalInput(input);
+    applySuggestion(suggestions[0], input);
+  };
+
+  const applySuggestion = (suggestion: string, baseInput: string) => {
+    const parts = baseInput.split(/\s+/);
+    
+    // If completing the command (first word)
+    if (parts.length === 1 && !baseInput.endsWith(' ')) {
+      setInput(suggestion + ' ');
+      return;
+    }
+    
+    // If completing a path argument
+    if (parts.length >= 1) {
+      // Replace the last part with the suggestion
+      parts[parts.length - 1] = suggestion;
+      setInput(parts.join(' '));
     }
   };
 
