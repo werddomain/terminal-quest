@@ -68,6 +68,11 @@ export function executeCommand(
       if (trimmed.startsWith('./')) {
         return handleExecuteScript(trimmed.slice(2), state);
       }
+      // Check if it's a package version check command (e.g., nginx -v, apache2 -v)
+      // Only for installed packages to avoid false positives
+      if ((args.includes('-v') || args.includes('--version')) && state.installedPackages.includes(command)) {
+        return handlePackageVersion(command, state);
+      }
       return {
         output: [{
           text: `${command}: command not found. Type 'help' for available commands.`,
@@ -1118,6 +1123,37 @@ function handleHistory(state: TerminalState): CommandResult {
       text: `  ${i + 1}  ${cmd}`,
       type: 'output' as const
     })),
+    newState: {}
+  };
+}
+
+function handlePackageVersion(packageName: string, state: TerminalState): CommandResult {
+  // Check if the package is installed
+  if (!state.installedPackages.includes(packageName)) {
+    return {
+      output: [{ text: `${packageName}: command not found`, type: 'error' }],
+      newState: {}
+    };
+  }
+
+  // Return a mock version for installed packages
+  const versions: Record<string, string> = {
+    nginx: 'nginx version: nginx/1.18.0',
+    apache2: 'Server version: Apache/2.4.41 (Ubuntu)',
+    mysql: 'mysql  Ver 8.0.27-0ubuntu0.20.04.1',
+    postgresql: 'psql (PostgreSQL) 12.9',
+    nodejs: 'v14.17.0',
+    python3: 'Python 3.8.10',
+    git: 'git version 2.25.1',
+    vim: 'VIM - Vi IMproved 8.1',
+    curl: 'curl 7.68.0',
+    wget: 'GNU Wget 1.20.3'
+  };
+
+  const version = versions[packageName] || `${packageName} version 1.0.0`;
+  
+  return {
+    output: [{ text: version, type: 'output' }],
     newState: {}
   };
 }
