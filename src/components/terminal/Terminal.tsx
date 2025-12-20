@@ -194,13 +194,6 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     };
   }, []);
 
-  // Update cursor position when input changes
-  useEffect(() => {
-    if (inputRef.current) {
-      setCursorPosition(inputRef.current.selectionStart || input.length);
-    }
-  }, [input]);
-
   const handleCommand = useCallback((cmd: string) => {
     const trimmedCmd = cmd.trim();
     
@@ -307,7 +300,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     
     // If completing the command (first word)
     if (parts.length === 1 && !baseInput.endsWith(' ')) {
-      setInput(suggestion + ' ');
+      const newInput = suggestion + ' ';
+      setInput(newInput);
+      setCursorToEnd(newInput);
       return;
     }
     
@@ -315,7 +310,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     if (parts.length >= 1) {
       // Replace the last part with the suggestion
       parts[parts.length - 1] = suggestion;
-      setInput(parts.join(' '));
+      const newInput = parts.join(' ');
+      setInput(newInput);
+      setCursorToEnd(newInput);
     }
   };
 
@@ -365,7 +362,15 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
                 ref={inputRef}
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  // Update cursor position after React updates the input
+                  requestAnimationFrame(() => {
+                    if (inputRef.current) {
+                      setCursorPosition(inputRef.current.selectionStart || 0);
+                    }
+                  });
+                }}
                 onKeyDown={handleKeyDown}
                 className="absolute inset-0 w-full bg-transparent border-none outline-none text-foreground font-mono opacity-0"
                 autoComplete="off"
