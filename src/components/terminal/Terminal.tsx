@@ -168,6 +168,8 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       }, EDITOR_CLOSE_FOCUS_DELAY);
       return () => clearTimeout(timer);
     }
+    // Return empty cleanup function when condition is false
+    return () => {};
   }, [state.editingFile, disabled]);
 
   // Track cursor position changes
