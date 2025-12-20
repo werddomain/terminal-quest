@@ -137,6 +137,20 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
 
   const prompt = `user@terminal-quest:${state.currentDirectory}$ `;
 
+  // Constants
+  const EDITOR_CLOSE_FOCUS_DELAY = 100; // ms delay to ensure editor unmounts before focusing terminal
+
+  // Helper function to set cursor position at end of input
+  const setCursorToEnd = useCallback((text: string) => {
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.selectionStart = text.length;
+        inputRef.current.selectionEnd = text.length;
+        setCursorPosition(text.length);
+      }
+    });
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.outputHistory]);
@@ -151,7 +165,7 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       // Use a small delay to ensure the editor has unmounted
       const timer = setTimeout(() => {
         inputRef.current?.focus();
-      }, 100);
+      }, EDITOR_CLOSE_FOCUS_DELAY);
       return () => clearTimeout(timer);
     }
   }, [state.editingFile, disabled]);
@@ -233,14 +247,7 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       if (newIndex >= 0) {
         const historyCmd = state.commandHistory[state.commandHistory.length - 1 - newIndex] || '';
         setInput(historyCmd);
-        // Set cursor to end of input after a small delay to allow input value to update
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.selectionStart = historyCmd.length;
-            inputRef.current.selectionEnd = historyCmd.length;
-            setCursorPosition(historyCmd.length);
-          }
-        }, 0);
+        setCursorToEnd(historyCmd);
       }
       setTabSuggestions([]);
       setTabIndex(0);
@@ -252,14 +259,7 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       if (newIndex >= 0) {
         const historyCmd = state.commandHistory[state.commandHistory.length - 1 - newIndex] || '';
         setInput(historyCmd);
-        // Set cursor to end of input after a small delay to allow input value to update
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.selectionStart = historyCmd.length;
-            inputRef.current.selectionEnd = historyCmd.length;
-            setCursorPosition(historyCmd.length);
-          }
-        }, 0);
+        setCursorToEnd(historyCmd);
       } else {
         setInput('');
         setCursorPosition(0);
