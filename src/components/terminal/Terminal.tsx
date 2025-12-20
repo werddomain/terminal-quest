@@ -127,6 +127,7 @@ function getPathSuggestions(partial: string, state: TerminalState): string[] {
 
 export function Terminal({ state, onStateChange, level, onHintRequest, disabled }: TerminalProps) {
   const [input, setInput] = useState('');
+  const [cursorPosition, setCursorPosition] = useState(0);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [tabSuggestions, setTabSuggestions] = useState<string[]>([]);
   const [tabIndex, setTabIndex] = useState(0);
@@ -136,12 +137,63 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
 
   const prompt = `user@terminal-quest:${state.currentDirectory}$ `;
 
+  // Constants
+  const EDITOR_CLOSE_FOCUS_DELAY = 100; // ms delay to ensure editor unmounts before focusing terminal
+
+  // Helper function to set cursor position at end of input
+  const setCursorToEnd = useCallback((text: string) => {
+    requestAnimationFrame(() => {
+      if (inputRef.current) {
+        inputRef.current.selectionStart = text.length;
+        inputRef.current.selectionEnd = text.length;
+        setCursorPosition(text.length);
+      }
+    });
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [state.outputHistory]);
 
   useEffect(() => {
     inputRef.current?.focus();
+  }, []);
+
+  // Focus terminal when editor closes (editingFile becomes null)
+  useEffect(() => {
+    if (!state.editingFile && !disabled) {
+      // Use a small delay to ensure the editor has unmounted
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, EDITOR_CLOSE_FOCUS_DELAY);
+      return () => clearTimeout(timer);
+    }
+    // Return empty cleanup function when condition is false
+    return () => {};
+  }, [state.editingFile, disabled]);
+
+  // Track cursor position changes
+  useEffect(() => {
+    const updateCursorPosition = () => {
+      if (inputRef.current) {
+        setCursorPosition(inputRef.current.selectionStart || 0);
+      }
+    };
+
+    const inputElement = inputRef.current;
+    if (inputElement) {
+      inputElement.addEventListener('click', updateCursorPosition);
+      inputElement.addEventListener('keyup', updateCursorPosition);
+      inputElement.addEventListener('select', updateCursorPosition);
+    }
+
+    return () => {
+      if (inputElement) {
+        inputElement.removeEventListener('click', updateCursorPosition);
+        inputElement.removeEventListener('keyup', updateCursorPosition);
+        inputElement.removeEventListener('select', updateCursorPosition);
+      }
+    };
   }, []);
 
   const handleCommand = useCallback((cmd: string) => {
@@ -178,6 +230,7 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       e.stopPropagation();
       handleCommand(input);
       setInput('');
+      setCursorPosition(0);
       setHistoryIndex(-1);
       setTabSuggestions([]);
       setTabIndex(0);
@@ -187,7 +240,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       const newIndex = Math.min(historyIndex + 1, state.commandHistory.length - 1);
       setHistoryIndex(newIndex);
       if (newIndex >= 0) {
-        setInput(state.commandHistory[state.commandHistory.length - 1 - newIndex] || '');
+        const historyCmd = state.commandHistory[state.commandHistory.length - 1 - newIndex] || '';
+        setInput(historyCmd);
+        setCursorToEnd(historyCmd);
       }
       setTabSuggestions([]);
       setTabIndex(0);
@@ -197,9 +252,12 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
       const newIndex = Math.max(historyIndex - 1, -1);
       setHistoryIndex(newIndex);
       if (newIndex >= 0) {
-        setInput(state.commandHistory[state.commandHistory.length - 1 - newIndex] || '');
+        const historyCmd = state.commandHistory[state.commandHistory.length - 1 - newIndex] || '';
+        setInput(historyCmd);
+        setCursorToEnd(historyCmd);
       } else {
         setInput('');
+        setCursorPosition(0);
       }
       setTabSuggestions([]);
       setTabIndex(0);
@@ -244,7 +302,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     
     // If completing the command (first word)
     if (parts.length === 1 && !baseInput.endsWith(' ')) {
-      setInput(suggestion + ' ');
+      const newInput = suggestion + ' ';
+      setInput(newInput);
+      setCursorToEnd(newInput);
       return;
     }
     
@@ -252,7 +312,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
     if (parts.length >= 1) {
       // Replace the last part with the suggestion
       parts[parts.length - 1] = suggestion;
-      setInput(parts.join(' '));
+      const newInput = parts.join(' ');
+      setInput(newInput);
+      setCursorToEnd(newInput);
     }
   };
 
@@ -302,7 +364,15 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
                 ref={inputRef}
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  // Update cursor position after React updates the input
+                  requestAnimationFrame(() => {
+                    if (inputRef.current) {
+                      setCursorPosition(inputRef.current.selectionStart || 0);
+                    }
+                  });
+                }}
                 onKeyDown={handleKeyDown}
                 className="absolute inset-0 w-full bg-transparent border-none outline-none text-foreground font-mono opacity-0"
                 autoComplete="off"
@@ -311,8 +381,9 @@ export function Terminal({ state, onStateChange, level, onHintRequest, disabled 
                 spellCheck={false}
                 disabled={disabled}
               />
-              <span className="text-foreground">{input}</span>
-              <span className="inline-block w-2 h-4 bg-terminal-green cursor-blink ml-0.5" />
+              <span className="text-foreground">{input.slice(0, cursorPosition)}</span>
+              <span className="inline-block w-2 h-4 bg-terminal-green cursor-blink" />
+              <span className="text-foreground">{input.slice(cursorPosition)}</span>
             </div>
           </div>
           <div ref={bottomRef} />
